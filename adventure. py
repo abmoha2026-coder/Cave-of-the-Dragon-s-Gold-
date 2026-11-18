@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""A compact Colossal Cave-style text adventure with a lamp timer."""
+
+LAMP_TURNS = 40
+LAMP_WARNING = 5
+
+ROOMS = {
+    "road": {
+        "name": "On a dusty road",
+        "desc": "A dusty road runs between a stone building to the north and a dark pit to the east.",
+        "dark": False,
+        "exits": {"north": "building", "east": "pit"},
+        "items": ["sword"],
+    },
+    "building": {
+        "name": "Inside a stone building",
+        "desc": "A quiet building. A passage in the floor leads to a cave below. Something here rewards the brave.",
+        "dark": False,
+        "exits": {"south": "road"},
+        "items": ["lamp"],
+    },
+    "pit": {
+        "name": "The edge of a pit",
+        "desc": "A deep pit yawns open. Shimmering gems catch what little light there is.",
+        "dark": True,
+        "exits": {"west": "road", "north": "cave"},
+        "items": ["gem"],
+    },
+    "cave": {
+        "name": "A cave",
+        "desc": "Cold stone walls surround you. A passage leads north, guarded by a dragon.",
+        "dark": True,
+        "exits": {"south": "pit", "north": "dragon"},
+        "items": ["gold"],
+    },
+    "dragon": {
+        "name": "The dragon's lair",
+        "desc": "A huge dragon blocks the way north. Its breath smells of sulphur.",
+        "dark": True,
+        "exits": {"south": "cave", "north": "treasure"},
+        "items": [],
+    },
+    "treasure": {
+        "name": "The treasure chamber",
+        "desc": "A glittering hoard fills this chamber.",
+        "dark": True,
+        "exits": {"south": "dragon"},
+        "items": ["treasure"],
+    },
+}
+
+DIRECTIONS = {"n": "north", "s": "south", "e": "east", "w": "west"}
+
+state = {
+    "room": "road",
+    "inventory": [],
+    "dragon_alive": True,
+    "won": False,
+}
+lamp_turns = LAMP_TURNS
+
+
+def lamp_lit():
+    return "lamp" in state["inventory"] and lamp_turns > 0
+
+
+def is_dark(room_id):
+    return ROOMS[room_id]["dark"] and not lamp_lit()
+
+
+def tick_lamp():
+    global lamp_turns
+    if "lamp" in state["inventory"] and lamp_turns > 0:
+        lamp_turns -= 1
+        if lamp_turns == LAMP_WARNING:
+            print("Your lamp is growing dim.")
+        elif lamp_turns == 0:
+            print("Your lamp sputters out and goes dark.")
+
+
+def show_room():
+    room = ROOMS[state["room"]]
+    print(f"\n== {room['name']} ==")
+    if is_dark(state["room"]):
+        print("It is too dark to see much here.")
+    else:
+        print(room["desc"])
+        exits = [d for d in room["exits"] if not (state["room"] == "cave" and d == "north" and state["dragon_alive"] is False and False)]
+        print("Exits: " + ", ".join(room["exits"].keys()))
+        if state["room"] == "dragon" and state["dragon_alive"]:
+            print("The dragon is here.")
+        visible = [i for i in room["items"] if i not in state["inventory"]]
+        if visible:
+            print("You see: " + ", ".join(visible))
+    if lamp_lit():
+        print(f"(Lamp: {lamp_turns} turns left)")
+
+
+def go(direction):
+    room = ROOMS[state["room"]]
+    if direction not in room["exits"]:
+        print("You can't go that way.")
+        return
+    if state["room"] == "cave" and direction == "north" and state["dragon_alive"]:
+        print("The dragon blocks the passage!")
+        return
+    if is_dark(state["room"]) and not lamp_lit():
+        print("You stumble around in the dark, but find your way.")
+    state["room"] = room["exits"][direction]
+    tick_lamp()
+    show_room()
+
+
+def take(item):
+    room = ROOMS[state["room"]]
+    if is_dark(state["room"]):
+        print("It's too dark to find anything.")
+        return
+    if item not in room["items"]:
+        print(f"There is no {item} here.")
+        return
+    room["items"].remove(item)
+    state["inventory"].append(item)
+    print(f"Taken: {item}.")
+    tick_lamp()
+    if item == "treasure" and state["room"] == "building":
+        state["won"] = True
+
+
+def drop(item):
+    if item not in state["inventory"]:
+        print(f"You don't have {item}.")
+        return
+    state["inventory"].remove(item)
+    ROOMS[state["room"]]["items"].append(item)
+    print(f"Dropped: {item}.")
+    tick_lamp()
+    if item == "treasure" and state["room"] == "building":
+        state["won"] = True
+
+
+def kill(target):
+    if target != "dragon":
+        print("You can't kill that.")
+        return
+    if state["room"] != "dragon" or not state["dragon_alive"]:
+        print("There is no dragon here.")
+        return
+    if "sword" not in state["inventory"]:
+        print("You need a weapon. The dragon laughs at your bare hands.")
+        return
+    state["dragon_alive"] = False
+    print("You strike the dragon down with your sword!")
+    tick_lamp()
+
+
+def xyzzy():
+    if state["room"] == "building":
+        state["room"] = "cave"
+    elif state["room"] == "cave":
+        state["room"] = "building"
+    else:
+        print("Nothing happens.")
+        return
+    print("The air shimmers and you are transported.")
+    show_room()
+
+
+def show_inventory():
+    if state["inventory"]:
+        print("You are carrying: " + ", ".join(state["inventory"]))
+    else:
+        print("You are carrying nothing.")
+    if "lamp" in state["inventory"]:
+        print(f"Lamp: {lamp_turns} turns left.")
+
+
+def help_text():
+    print("Commands: GO <dir> (or N/S/E/W), LOOK, GET <item>, DROP <item>, "
+          "INVENTORY, KILL <target>, XYZZY, HELP, QUIT")
+
+
+def main():
+    print("Welcome to the Adventure. Bring the treasure back to the building to win.")
+    help_text()
+    show_room()
+    while not state["won"]:
+        try:
+            line = input("\n> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye.")
+            return
+        if not line:
+            continue
+        parts = line.split(maxsplit=1)
+        verb = parts[0]
+        noun = parts[1] if len(parts) > 1 else ""
+
+        if verb in DIRECTIONS:
+            go(DIRECTIONS[verb])
+        elif verb == "go":
+            go(DIRECTIONS.get(noun, noun))
+        elif verb == "look":
+            show_room()
+        elif verb == "get" or verb == "take":
+            take(noun)
+        elif verb == "drop":
+            drop(noun)
+        elif verb in ("inventory", "i"):
+            show_inventory()
+        elif verb == "kill":
+            kill(noun)
+        elif verb == "xyzzy":
+            xyzzy()
+        elif verb == "help":
+            help_text()
+        elif verb in ("quit", "q"):
+            print("Goodbye.")
+            return
+        else:
+            print("I don't understand that.")
+
+    print("\nYou place the treasure in the building. You have won!")
+
+
+if __name__ == "__main__":
+    main()
