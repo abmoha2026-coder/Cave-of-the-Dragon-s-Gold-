@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Adventure</title>
+<style>body{background:#111;color:#0f0;font-family:monospace;padding:20px}input{background:#111;color:#0f0;border:none;width:90%;font:inherit}</style>
+</head><body>
+<div id="out"></div><input id="in" autofocus placeholder="Type a command..."><script>
+const R={road:['You are at the end of a road before a small brick building.',{north:'building'}],
+building:['You are inside a small brick building. Stairs lead down.',{south:'road',down:'cave'}],
+cave:['You are in a dark cave. Passages lead east and west.',{up:'building',east:'hall',west:'pit'}],
+hall:['A grand hall glitters with gold coins!',{west:'cave'}],
+pit:['You stand at the edge of a deep pit.',{east:'cave'}]};
+let loc='road',items={building:['lamp'],hall:['gold']};
+const out=document.getElementById('out');
+const say=t=>out.innerHTML+=t+'<br>';
+say('ADVENTURE. Type commands like GO NORTH, GET LAMP, or XYZZY.');say(R[loc][0]);
+document.getElementById('in').onkeydown=e=>{if(e.key!=='Enter')return;
+const w=e.target.value.toLowerCase().trim().split(' ');e.target.value='';
+const [v,n]=[w[0],w[w.length-1]];say('> '+w.join(' '));
+if(['north','south','east','west','up','down'].includes(v)||v==='go'){const d=v==='go'?n:v;
+if(R[loc][1][d]){loc=R[loc][1][d];say(R[loc][0]);}else say("You can't go that way.");}
+else if(v==='get'&&(items[loc]||[]).includes(n)){items[loc]=items[loc].filter(x=>x!==n);say('Taken: '+n+'.');}
+else if(v==='xyzzy')say('A hollow voice says "Fool!"');
+else say("I don't understand that.");
+if(loc==='hall'&&!(items.hall||[]).length)say('*** You found all the treasure! ***');
+out.scrollIntoView(false);};
+</script></body></html>
