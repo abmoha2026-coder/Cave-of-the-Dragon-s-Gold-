@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adventure</title>
+<style>
+  body { font-family: monospace; background: #111; color: #ddd; margin: 0; padding: 16px; }
+  h1 { color: #e8c35a; margin-top: 0; }
+  .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  .panel { background: #1c1c1c; border: 1px solid #333; padding: 12px; border-radius: 6px; min-width: 260px; flex: 1; }
+  .grid { display: grid; grid-template-columns: repeat(3, 60px); gap: 6px; margin-bottom: 10px; }
+  button { background: #2a2a2a; color: #ddd; border: 1px solid #444; padding: 6px 10px; cursor: pointer; font-family: monospace; }
+  button:hover:not(:disabled) { background: #3a3a3a; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .actions, .items { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  #log { height: 320px; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; white-space: pre-wrap; }
+  .lamp { color: #e8c35a; }
+</style>
+</head>
+<body>
+<h1>Adventure</h1>
+<div class="wrap">
+  <div class="panel">
+    <h3 id="roomName">On a dusty road</h3>
+    <div id="roomInfo"></div>
+    <div class="grid">
+      <span></span>
+      <button id="n" onclick="move('north')">N</button>
+      <span></span>
+      <button id="w" onclick="move('west')">W</button>
+      <span></span>
+      <button id="e" onclick="move('east')">E</button>
+      <span></span>
+      <button id="s" onclick="move('south')">S</button>
+      <span></span>
+    </div>
+    <div class="actions">
+      <button onclick="act('look')">Look</button>
+      <button onclick="act('inventory')">Inventory</button>
+      <button onclick="act('xyzzy')">XYZZY</button>
+      <button onclick="act('help')">Help</button>
+      <button onclick="act('kill dragon')">Kill Dragon</button>
+      <button id="fillBtn" onclick="act('fill lamp')">Fill Lamp</button>
+    </div>
+    <div><strong>Here:</strong></div>
+    <div class="items" id="roomItems"></div>
+    <div><strong>Your pack:</strong></div>
+    <div class="items" id="packItems"></div>
+    <div id="lampStatus" class="lamp"></div>
+  </div>
+  <div class="panel" style="flex: 2;">
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const LAMP_TURNS = 40;
+const LAMP_WARNING = 5;
+
+const ROOMS = {
+  road: {
+    name: "On a dusty road",
+    desc: "A dusty road runs between a stone building to the north and a dark pit to the east.",
+    dark: false,
+    exits: { north: "building", east: "pit" },
+    items: ["sword"]
+  },
+  building: {
+    name: "Inside a stone building",
+    desc: "A quiet building. A passage in the floor leads to a cave below. Something here rewards the brave.",
+    dark: false,
+    exits: { south: "road" },
+    items: ["lamp", "oil"]
+  },
+  pit: {
+    name: "The edge of a pit",
+    desc: "A deep pit yawns open. Shimmering gems catch what little light there is.",
+    dark: true,
+    exits: { west: "road", north: "cave" },
+    items: ["gem"]
+  },
+  cave: {
+    name: "A cave",
+    desc: "Cold stone walls surround you. A passage leads north, guarded by a dragon.",
+    dark: true,
+    exits: { south: "pit", north: "dragon" },
+    items: ["gold"]
+  },
+  dragon: {
+    name: "The dragon's lair",
+    desc: "A huge dragon blocks the way north. Its breath smells of sulphur.",
+    dark: true,
+    exits: { south: "cave", north: "treasure" },
+    items: []
+  },
+  treasure: {
+    name: "The treasure chamber",
+    desc: "A glittering hoard fills this chamber.",
+    dark: true,
+    exits: { south: "dragon" },
+    items: ["treasure"]
+  }
+};
+
+const state = { room: "road", inventory: [], dragonAlive: true, won: false };
+let lampTurns = LAMP_TURNS;
+
+function log(text) {
+  const el = document.getElementById("log");
+  el.textContent += text + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+function lampLit() {
+  return state.inventory.includes("lamp") && lampTurns > 0;
+}
+
+function isDark(roomId) {
+  return ROOMS[roomId].dark && !lampLit();
+}
+
+function tickLamp() {
+  if (state.inventory.includes("lamp") && lampTurns > 0) {
+    lampTurns--;
+    if (lampTurns === LAMP_WARNING) log("Your lamp is growing dim.");
+    else if (lampTurns === 0) log("Your lamp sputters out and goes dark.");
+  }
+}
+
+function render() {
+  const room = ROOMS[state.room];
+  document.getElementById("roomName").textContent = room.name;
+  const info = document.getElementById("roomInfo");
+  const dark = isDark(state.room);
+
+  info.textContent = dark ? "It is too dark to see much here." : room.desc;
+  if (state.room === "dragon" && state.dragonAlive && !dark) {
+    info.textContent += " The dragon is here.";
+  }
+
+  for (const d of ["north", "south", "east", "west"]) {
+    document.getElementById(d[0]).disabled = !(d in room.exits);
+  }
+
+  const roomItems = document.getElementById("roomItems");
+  roomItems.innerHTML = "";
+  if (!dark) {
+    room.items.filter(i => !state.inventory.includes(i)).forEach(item => {
+      roomItems.appendChild(makeButton(item, () => act("get " + item)));
+    });
+  }
+
+  const packItems = document.getElementById("packItems");
+  packItems.innerHTML = "";
+  state.inventory.forEach(item => {
+    packItems.appendChild(makeButton(item, () => act("drop " + item)));
+  });
+
+  const hasLamp = state.inventory.includes("lamp");
+  document.getElementById("lampStatus").textContent =
+    hasLamp ? `Lamp: ${lampTurns} turns left` : "";
+  document.getElementById("fillBtn").disabled =
+    !(hasLamp && state.inventory.includes("oil"));
+}
+
+function makeButton(label, onClick) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.onclick = onClick;
+  return b;
+}
+
+function move(direction) {
+  if (state.won) return;
+  act("go " + direction);
+}
+
+function act(command) {
+  if (state.won) return;
+  const parts = command.trim().toLowerCase().split(/\s+/);
+  const verb = parts[0];
+  const noun = parts.slice(1).join(" ");
+  const room = ROOMS[state.room];
+
+  log("> " + command);
+
+  if (verb === "go") {
+    if (!(noun in room.exits)) {
+      log("You can't go that way.");
+    } else if (state.room === "cave" && noun === "north" && state.dragonAlive) {
+      log("The dragon blocks the passage!");
+    } else {
+      if (isDark(state.room)) log("You stumble around in the dark, but find your way.");
+      state.room = room.exits[noun];
+      tickLamp();
+      log(ROOMS[state.room].name + ".");
+    }
+  } else if (verb === "look") {
+    log(ROOMS[state.room].name + ": " + (isDark(state.room) ? "It is too dark to see much here." : room.desc));
+  } else if (verb === "get" || verb === "take") {
+    if (isDark(state.room)) {
+      log("It's too dark to find anything.");
+    } else if (!room.items.includes(noun)) {
+      log("There is no " + noun + " here.");
+    } else {
+      room.items.splice(room.items.indexOf(noun), 1);
+      state.inventory.push(noun);
+      log("Taken: " + noun + ".");
+      tickLamp();
+      checkWin(noun);
+    }
+  } else if (verb === "drop") {
+    if (!state.inventory.includes(noun)) {
+      log("You don't have " + noun + ".");
+    } else {
+      state.inventory.splice(state.inventory.indexOf(noun), 1);
+      room.items.push(noun);
+      log("Dropped: " + noun + ".");
+      tickLamp();
+      checkWin(noun);
+    }
+  } else if (verb === "fill") {
+    if (noun !== "lamp") {
+      log("You can't fill that.");
+    } else if (!state.inventory.includes("lamp")) {
+      log("You have no lamp.");
+    } else if (!state.inventory.includes("oil")) {
+      log("You have no oil.");
+    } else {
+      state.inventory.splice(state.inventory.indexOf("oil"), 1);
+      lampTurns = LAMP_TURNS;
+      log("You pour the oil into the lamp. It burns brightly again.");
+    }
+  } else if (verb === "inventory" || verb === "i") {
+    log(state.inventory.length ? "You are carrying: " + state.inventory.join(", ") : "You are carrying nothing.");
+    if (state.inventory.includes("lamp")) log(`Lamp: ${lampTurns} turns left.`);
+  } else if (verb === "kill") {
+    if (noun !== "dragon") {
+      log("You can't kill that.");
+    } else if (state.room !== "dragon" || !state.dragonAlive) {
+      log("There is no dragon here.");
+    } else if (!state.inventory.includes("sword")) {
+      log("You need a weapon. The dragon laughs at your bare hands.");
+    } else {
+      state.dragonAlive = false;
+      log("You strike the dragon down with your sword!");
+      tickLamp();
+    }
+  } else if (verb === "xyzzy") {
+    if (state.room === "building") state.room = "cave";
+    else if (state.room === "cave") state.room = "building";
+    else log("Nothing happens.");
+    if (state.room === "building" || state.room === "cave") {
+      log("The air shimmers and you are transported to " + ROOMS[state.room].name + ".");
+    }
+  } else if (verb === "help") {
+    log("Commands: GO <dir> (or N/S/E/W), LOOK, GET <item>, DROP <item>, FILL LAMP, INVENTORY, KILL dragon, XYZZY, HELP");
+  } else {
+    log("I don't understand that.");
+  }
+
+  render();
+}
+
+function checkWin(item) {
+  if (item === "treasure" && state.room === "building" && state.inventory.includes("treasure")) {
+    state.won = true;
+    log("You place the treasure in the building. You have won!");
+    document.querySelectorAll("button").forEach(b => b.disabled = true);
+  }
+}
+
+log("Welcome to the Adventure. Bring the treasure back to the building to win.");
+log("Type HELP for commands.");
+render();
+</script>
+</body>
+</html>
